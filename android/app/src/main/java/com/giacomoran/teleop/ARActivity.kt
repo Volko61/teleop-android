@@ -19,14 +19,24 @@ import com.giacomoran.teleop.ui.ControlPadOutput
 import com.giacomoran.teleop.ui.StatusBar
 import com.giacomoran.teleop.ui.theme.TeleopTheme
 import com.giacomoran.teleop.util.ARCoreSessionManager
+import com.giacomoran.teleop.util.WebSocketClient
 import kotlinx.coroutines.delay
 
 class ARActivity : ComponentActivity() {
     private lateinit var sessionManager: ARCoreSessionManager
+    private var webSocketClient: WebSocketClient? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Get server IP and port from intent
+        val serverIp = intent.getStringExtra("SERVER_IP") ?: "192.168.1.100"
+        val serverPort = intent.getStringExtra("SERVER_PORT")?.toIntOrNull() ?: 4443
+
+        // Initialize WebSocket client
+        webSocketClient = WebSocketClient(serverIp, serverPort)
+        webSocketClient?.connect()
 
         // Initialize ARCore session manager
         sessionManager = ARCoreSessionManager(this)
@@ -40,7 +50,10 @@ class ARActivity : ComponentActivity() {
 
         setContent {
             TeleopTheme {
-                ARScreen(sessionManager = sessionManager)
+                ARScreen(
+                    sessionManager = sessionManager,
+                    webSocketClient = webSocketClient
+                )
             }
         }
     }
@@ -57,14 +70,20 @@ class ARActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        webSocketClient?.disconnect()
         sessionManager.stopSession()
     }
 }
 
 @Composable
-fun ARScreen(sessionManager: ARCoreSessionManager) {
+fun ARScreen(
+    sessionManager: ARCoreSessionManager,
+    webSocketClient: WebSocketClient?
+) {
     val poseState by sessionManager.poseState.collectAsState()
     val trackingState by sessionManager.trackingState.collectAsState()
+    val connectionState by webSocketClient?.connectionState?.collectAsState()
+        ?: remember { mutableStateOf(WebSocketClient.ConnectionState.Disconnected) }
 
     // Show tracking message for first 5 seconds
     var showTrackingMessage by remember { mutableStateOf(true) }
@@ -73,8 +92,23 @@ fun ARScreen(sessionManager: ARCoreSessionManager) {
         showTrackingMessage = false
     }
 
-    // Handle control pad output (placeholder for future robot control)
+    // Handle control pad output and send to server
     var controlOutput by remember { mutableStateOf<ControlPadOutput?>(null) }
+
+    // Send pose data when it updates
+    LaunchedEffect(poseState) {
+        if (poseState is ARCoreSessionManager.PoseState.Pose) {
+            val pose = poseState as ARCoreSessionManager.PoseState.Pose
+            webSocketClient?.sendPose(pose.position, pose.quaternion)
+        }
+    }
+
+    // Send control data when it changes
+    LaunchedEffect(controlOutput) {
+        controlOutput?.let { control ->
+            webSocketClient?.sendControl(control)
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize()
@@ -103,6 +137,7 @@ fun ARScreen(sessionManager: ARCoreSessionManager) {
                 StatusBar(
                     poseState = poseState,
                     trackingState = trackingState,
+                    connectionState = connectionState,
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -135,7 +170,6 @@ fun ARScreen(sessionManager: ARCoreSessionManager) {
                     ControlPad(
                         onControlChange = { output ->
                             controlOutput = output
-                            // TODO: Send control commands to robot
                         },
                         modifier = Modifier
                             .fillMaxWidth()

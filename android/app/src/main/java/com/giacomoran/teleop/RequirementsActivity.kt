@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.giacomoran.teleop.ui.theme.TeleopTheme
@@ -73,13 +74,20 @@ class RequirementsActivity : ComponentActivity() {
         setContent {
             TeleopTheme {
                 val requirements by requirementsState
+                var ipAddress by remember { mutableStateOf("192.168.1.100") }
+                var port by remember { mutableStateOf("4443") }
+
                 RequirementsScreen(
                     requirements = requirements,
+                    ipAddress = ipAddress,
+                    port = port,
+                    onIpAddressChange = { ipAddress = it },
+                    onPortChange = { port = it },
                     onGrantClick = { requirementId ->
                         handleGrantClick(requirementId)
                     },
                     onStartClick = {
-                        startARActivity()
+                        startARActivity(ipAddress, port)
                     }
                 )
             }
@@ -244,8 +252,11 @@ class RequirementsActivity : ComponentActivity() {
         }
     }
 
-    private fun startARActivity() {
-        val intent = Intent(this, ARActivity::class.java)
+    private fun startARActivity(ipAddress: String, port: String) {
+        val intent = Intent(this, ARActivity::class.java).apply {
+            putExtra("SERVER_IP", ipAddress)
+            putExtra("SERVER_PORT", port)
+        }
         startActivity(intent)
     }
 
@@ -254,10 +265,16 @@ class RequirementsActivity : ComponentActivity() {
 @Composable
 fun RequirementsScreen(
     requirements: List<Requirement>,
+    ipAddress: String,
+    port: String,
+    onIpAddressChange: (String) -> Unit,
+    onPortChange: (String) -> Unit,
     onGrantClick: (String) -> Unit,
     onStartClick: () -> Unit
 ) {
     val allMet = requirements.all { it.state == RequirementState.Met }
+    val isServerConfigValid = ipAddress.isNotBlank() && port.isNotBlank() &&
+                              port.toIntOrNull() != null && port.toInt() in 1..65535
 
     Scaffold(
         modifier = Modifier.fillMaxSize()
@@ -282,6 +299,50 @@ fun RequirementsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            // Server configuration section
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Server Configuration",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    OutlinedTextField(
+                        value = ipAddress,
+                        onValueChange = onIpAddressChange,
+                        label = { Text("IP Address") },
+                        placeholder = { Text("192.168.1.100") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = port,
+                        onValueChange = onPortChange,
+                        label = { Text("Port") },
+                        placeholder = { Text("4443") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = KeyboardType.Number
+                        ),
+                        isError = port.isNotBlank() && (port.toIntOrNull() == null || port.toInt() !in 1..65535)
+                    )
+                }
+            }
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -298,7 +359,7 @@ fun RequirementsScreen(
 
             Button(
                 onClick = onStartClick,
-                enabled = allMet,
+                enabled = allMet && isServerConfigValid,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)

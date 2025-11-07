@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.giacomoran.teleop.util.ARCoreSessionManager
 import com.giacomoran.teleop.util.ARCoreTrackingTracker
+import com.giacomoran.teleop.util.WebSocketClient
 
 /**
  * Status bar component that displays:
@@ -26,6 +27,7 @@ import com.giacomoran.teleop.util.ARCoreTrackingTracker
 fun StatusBar(
     poseState: ARCoreSessionManager.PoseState,
     trackingState: ARCoreTrackingTracker.TrackingMetrics,
+    connectionState: WebSocketClient.ConnectionState,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -51,14 +53,7 @@ fun StatusBar(
                 modifier = Modifier
             )
 
-            Text(
-                text = "Laptop Disconnected",
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Default,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFFF44336),
-                lineHeight = 14.4.sp
-            )
+            ConnectionStatusText(connectionState = connectionState)
         }
 
         // Position and Orientation cards
@@ -181,5 +176,40 @@ private fun DataCard(
  */
 private fun formatFloat(value: Float): String {
     return String.format("%.3f", value)
+}
+
+/**
+ * Display connection status text based on WebSocket connection state.
+ */
+@Composable
+private fun ConnectionStatusText(
+    connectionState: WebSocketClient.ConnectionState
+) {
+    val (text, color) = when (connectionState) {
+        is WebSocketClient.ConnectionState.Connected -> {
+            "Laptop Connected" to Color(0xFF4CAF50) // Green
+        }
+        is WebSocketClient.ConnectionState.Connecting -> {
+            "Connecting..." to Color(0xFFFF9800) // Orange
+        }
+        is WebSocketClient.ConnectionState.Error -> {
+            // Don't display error messages in UI - just show disconnected status
+            // Errors are logged instead
+            "Laptop Disconnected" to Color(0xFFF44336) // Red
+        }
+        is WebSocketClient.ConnectionState.Disconnected -> {
+            "Laptop Disconnected" to Color(0xFFF44336) // Red
+        }
+    }
+
+    Text(
+        text = text,
+        fontSize = 12.sp,
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        color = color,
+        lineHeight = 14.4.sp,
+        maxLines = 1
+    )
 }
 
