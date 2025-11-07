@@ -23,7 +23,10 @@ import com.giacomoran.teleop.ui.theme.TeleopTheme
 import com.giacomoran.teleop.util.ARCoreHelper
 import com.giacomoran.teleop.util.CameraPermissionHelper
 import com.google.ar.core.ArCoreApk
+import com.google.ar.core.exceptions.UnavailableException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import android.util.Log
 
 /**
  * State for a single requirement
@@ -48,6 +51,7 @@ data class Requirement(
 class RequirementsActivity : ComponentActivity() {
     private var userRequestedInstall = true
     private val requirementsState = mutableStateOf<List<Requirement>>(emptyList())
+    private val TAG = "RequirementsActivity"
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -116,38 +120,77 @@ class RequirementsActivity : ComponentActivity() {
 
     private fun checkRequirements() {
         lifecycleScope.launch {
-            // Check ARCore availability
-            checkARCoreSupport()
-
-            // Check ARCore installation
-            checkARCoreInstallation()
+            // Check ARCore support and installation (combined check)
+            checkARCoreSupportAndInstallation()
 
             // Check camera permission
             checkCameraPermission()
         }
     }
 
-    private fun checkARCoreSupport() {
+    /**
+     * Check ARCore support and installation status following the official pattern.
+     * This combines both checks intelligently as shown in the ARCore documentation.
+     */
+    private suspend fun checkARCoreSupportAndInstallation() {
         val availability = ARCoreHelper.checkAvailability(this)
-        val state = when (availability) {
-            ArCoreApk.Availability.SUPPORTED_INSTALLED,
-            ArCoreApk.Availability.SUPPORTED_APK_TOO_OLD,
-            ArCoreApk.Availability.SUPPORTED_NOT_INSTALLED -> RequirementState.Met
-            ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE -> RequirementState.Unmet
-            else -> RequirementState.Checking
-        }
-        updateRequirementState("arcore_support", state)
-    }
 
-    private fun checkARCoreInstallation() {
-        val installStatus = ARCoreHelper.requestInstall(this, false)
-        val state = when (installStatus) {
-            ArCoreApk.InstallStatus.INSTALLED -> RequirementState.Met
-            ArCoreApk.InstallStatus.INSTALL_REQUESTED -> RequirementState.Checking
-            null -> RequirementState.Unmet
-            else -> RequirementState.Unmet
+        when (availability) {
+            ArCoreApk.Availability.SUPPORTED_INSTALLED -> {
+                // Device supports ARCore and it's installed and up to date
+                updateRequirementState("arcore_support", RequirementState.Met)
+                updateRequirementState("arcore_installation", RequirementState.Met)
+            }
+
+            ArCoreApk.Availability.SUPPORTED_APK_TOO_OLD,
+            ArCoreApk.Availability.SUPPORTED_NOT_INSTALLED -> {
+                // Device supports ARCore but needs installation or update
+                updateRequirementState("arcore_support", RequirementState.Met)
+
+                // Check installation status
+                try {
+                    val installStatus = ARCoreHelper.requestInstall(this, false)
+                    when (installStatus) {
+                        ArCoreApk.InstallStatus.INSTALLED -> {
+                            updateRequirementState("arcore_installation", RequirementState.Met)
+                        }
+                        ArCoreApk.InstallStatus.INSTALL_REQUESTED -> {
+                            Log.i(TAG, "ARCore installation requested.")
+                            updateRequirementState("arcore_installation", RequirementState.Checking)
+                        }
+                        null -> {
+                            Log.e(TAG, "ARCore installation failed or was declined")
+                            updateRequirementState("arcore_installation", RequirementState.Unmet)
+                        }
+                    }
+                } catch (e: UnavailableException) {
+                    Log.e(TAG, "ARCore not available", e)
+                    updateRequirementState("arcore_installation", RequirementState.Unmet)
+                }
+            }
+
+            ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE -> {
+                // Device does not support ARCore
+                updateRequirementState("arcore_support", RequirementState.Unmet)
+                updateRequirementState("arcore_installation", RequirementState.Unmet)
+            }
+
+            ArCoreApk.Availability.UNKNOWN_CHECKING -> {
+                // ARCore is checking availability with a remote query
+                // Wait 200ms and check again
+                Log.d(TAG, "ARCore availability checking, waiting 200ms...")
+                delay(200)
+                checkARCoreSupportAndInstallation()
+            }
+
+            ArCoreApk.Availability.UNKNOWN_ERROR,
+            ArCoreApk.Availability.UNKNOWN_TIMED_OUT -> {
+                // Error checking AR availability (may be due to device being offline)
+                Log.e(TAG, "Error checking ARCore availability: $availability")
+                updateRequirementState("arcore_support", RequirementState.Unmet)
+                updateRequirementState("arcore_installation", RequirementState.Unmet)
+            }
         }
-        updateRequirementState("arcore_installation", state)
     }
 
     private fun checkCameraPermission() {
@@ -172,10 +215,27 @@ class RequirementsActivity : ComponentActivity() {
     private fun handleGrantClick(requirementId: String) {
         when (requirementId) {
             "arcore_installation" -> {
-                userRequestedInstall = true
-                val installStatus = ARCoreHelper.requestInstall(this, true)
-                if (installStatus == ArCoreApk.InstallStatus.INSTALL_REQUESTED) {
-                    updateRequirementState("arcore_installation", RequirementState.Checking)
+                lifecycleScope.launch {
+                    userRequestedInstall = true
+                    try {
+                        val installStatus = ARCoreHelper.requestInstall(this@RequirementsActivity, true)
+                        when (installStatus) {
+                            ArCoreApk.InstallStatus.INSTALL_REQUESTED -> {
+                                Log.i(TAG, "ARCore installation requested.")
+                                updateRequirementState("arcore_installation", RequirementState.Checking)
+                            }
+                            ArCoreApk.InstallStatus.INSTALLED -> {
+                                updateRequirementState("arcore_installation", RequirementState.Met)
+                            }
+                            null -> {
+                                Log.e(TAG, "ARCore installation failed or was declined")
+                                updateRequirementState("arcore_installation", RequirementState.Unmet)
+                            }
+                        }
+                    } catch (e: UnavailableException) {
+                        Log.e(TAG, "ARCore not available", e)
+                        updateRequirementState("arcore_installation", RequirementState.Unmet)
+                    }
                 }
             }
             "camera" -> {

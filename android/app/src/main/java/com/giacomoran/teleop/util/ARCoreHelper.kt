@@ -3,6 +3,7 @@ package com.giacomoran.teleop.util
 import android.app.Activity
 import com.google.ar.core.ArCoreApk
 import com.google.ar.core.ArCoreApk.InstallStatus
+import com.google.ar.core.exceptions.UnavailableException
 import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException
 
 object ARCoreHelper {
@@ -15,8 +16,10 @@ object ARCoreHelper {
 
     /**
      * Request installation of Google Play Services for AR
-     * Returns the installation status
+     * Returns the installation status, or null if installation was declined
+     * Throws UnavailableException for other errors
      */
+    @Throws(UnavailableException::class)
     fun requestInstall(
         activity: Activity,
         userRequestedInstall: Boolean
@@ -24,9 +27,11 @@ object ARCoreHelper {
         return try {
             ArCoreApk.getInstance().requestInstall(activity, userRequestedInstall)
         } catch (e: UnavailableUserDeclinedInstallationException) {
+            // User declined installation - return null
             null
-        } catch (e: Exception) {
-            null
+        } catch (e: UnavailableException) {
+            // Re-throw other UnavailableException types
+            throw e
         }
     }
 }
