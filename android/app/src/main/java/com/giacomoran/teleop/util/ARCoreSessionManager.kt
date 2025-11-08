@@ -299,7 +299,7 @@ class ARCoreSessionManager(private val activity: Activity) {
                 val position = FloatArray(3)
                 pose.getTranslation(position, 0)
 
-                // Extract orientation (quaternion)
+                // Extract orientation (quaternion) X, Y, Z, W
                 val quaternion = FloatArray(4)
                 pose.getRotationQuaternion(quaternion, 0)
 

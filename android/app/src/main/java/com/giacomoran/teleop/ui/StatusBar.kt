@@ -96,10 +96,10 @@ fun StatusBar(
                     DataCard(
                         title = "Orientation",
                         values = listOf(
-                            "W" to formatFloat(state.quaternion[0]),
-                            "X" to formatFloat(state.quaternion[1]),
-                            "Y" to formatFloat(state.quaternion[2]),
-                            "Z" to formatFloat(state.quaternion[3])
+                            "X" to formatFloat(state.quaternion[0]),
+                            "Y" to formatFloat(state.quaternion[1]),
+                            "Z" to formatFloat(state.quaternion[2]),
+                            "W" to formatFloat(state.quaternion[3])
                         ),
                         modifier = Modifier
                             .weight(1f)
