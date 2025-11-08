@@ -13,4 +13,9 @@ build-backend = "hatchling.build"
 packages = ["teleop_android"]
 
 [project.optional-dependencies]
-rerun = ["rerun-sdk>=0.26.2", "numpy>=2.3.4", "scipy>=1.16.3"]
+rerun = [
+    "numpy>=2.3.4",
+    "rerun-sdk>=0.26.2",
+    "scipy>=1.16.3",
+    "transforms3d>=0.4.2",
+]

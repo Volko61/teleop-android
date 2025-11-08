@@ -473,6 +473,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "transforms3d" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -489,7 +490,20 @@ requires-dist = [
     { name = "numpy", marker = "extra == 'rerun'", specifier = ">=2.3.4" },
     { name = "rerun-sdk", marker = "extra == 'rerun'", specifier = ">=0.26.2" },
     { name = "scipy", marker = "extra == 'rerun'", specifier = ">=1.16.3" },
+    { name = "transforms3d", specifier = ">=0.4.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.38.0" },
+]
+
+[[package]]
+name = "transforms3d"
+version = "0.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d5/1e/626c2d87c29a35fadc8de5624f4302e1ee56cff380d282d62cb3780e6620/transforms3d-0.4.2.tar.gz", hash = "sha256:e8b5df30eaedbee556e81c6938e55aab5365894e47d0a17615d7db7fd2393680", size = 1368797 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/61/7a/f38385f1b2d5f54221baf1db3d6371dc6eef8041d95abff39576c694e9d9/transforms3d-0.4.2-py3-none-any.whl", hash = "sha256:1c70399d9e9473ecc23311fd947f727f7c69ed0b063244828c383aa1aefa5941", size = 1376759 },
 ]
 
 [[package]]
