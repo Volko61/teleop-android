@@ -23,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import com.giacomoran.teleop.ui.theme.TeleopTheme
 import com.giacomoran.teleop.util.ARCoreHelper
 import com.giacomoran.teleop.util.CameraPermissionHelper
+import com.giacomoran.teleop.util.ServerConfigPreferences
 import com.google.ar.core.ArCoreApk
 import com.google.ar.core.exceptions.UnavailableException
 import kotlinx.coroutines.delay
@@ -53,6 +54,7 @@ class RequirementsActivity : ComponentActivity() {
     private var userRequestedInstall = true
     private val requirementsState = mutableStateOf<List<Requirement>>(emptyList())
     private val TAG = "RequirementsActivity"
+    private lateinit var serverConfigPrefs: ServerConfigPreferences
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -68,14 +70,18 @@ class RequirementsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Initialize SharedPreferences helper
+        serverConfigPrefs = ServerConfigPreferences.getInstance(this)
+
         initializeRequirements()
         checkRequirements()
 
         setContent {
             TeleopTheme {
                 val requirements by requirementsState
-                var ipAddress by remember { mutableStateOf("192.168.1.100") }
-                var port by remember { mutableStateOf("4443") }
+                // Load saved IP address and port, or use defaults
+                var ipAddress by remember { mutableStateOf(serverConfigPrefs.getIpAddress()) }
+                var port by remember { mutableStateOf(serverConfigPrefs.getPort()) }
 
                 RequirementsScreen(
                     requirements = requirements,
@@ -253,6 +259,9 @@ class RequirementsActivity : ComponentActivity() {
     }
 
     private fun startARActivity(ipAddress: String, port: String) {
+        // Save the IP address and port before starting the activity
+        serverConfigPrefs.saveServerConfig(ipAddress, port)
+
         val intent = Intent(this, ARActivity::class.java).apply {
             putExtra("SERVER_IP", ipAddress)
             putExtra("SERVER_PORT", port)
