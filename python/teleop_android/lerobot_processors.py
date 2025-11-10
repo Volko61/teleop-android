@@ -79,9 +79,10 @@ class MapPhoneActionToRobotAction(RobotActionProcessorStep):
         action["target_wz"] = rotvec_identity[2]
         # Same as "enabled", the EEReferenceAndDelta step pops "enabled" so we store
         # an additional copy that is popped by WristJoints.
+        # Note that wrist roll is flipped.
         action["wrist_enabled"] = enabled
         action["wrist_delta_degrees_flex"] = delta_orientation_euler[1]
-        action["wrist_delta_degrees_roll"] = delta_orientation_euler[0]
+        action["wrist_delta_degrees_roll"] = -delta_orientation_euler[0]
         # Same as "enabled", store an additional copy for GripperToJoint
         action["gripper_enabled"] = enabled
         action["gripper_delta_y_control_pad"] = delta_y_control_pad if enabled else 0.0

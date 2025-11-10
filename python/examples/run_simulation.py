@@ -65,7 +65,7 @@ MOTOR_TO_RERUN = {
     },
     "wrist_roll": {
         "path": "/world_robot/so101_new_calib/base_link/shoulder_pan/shoulder_link/shoulder_lift/upper_arm_link/elbow_flex/lower_arm_link/wrist_flex/wrist_link/wrist_roll",
-        "axis": [0, -1, 0],
+        "axis": [0, 1, 0],
         "pos_init": -2.241758241758242,
     },
     "gripper": {

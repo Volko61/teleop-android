@@ -11,21 +11,27 @@ from lerobot.robots.so100_follower.config_so100_follower import SO100FollowerCon
 from lerobot.robots.so100_follower.robot_kinematic_processor import (
     EEBoundsAndSafety,
     EEReferenceAndDelta,
-    GripperVelocityToJoint,
     InverseKinematicsEEToJoints,
 )
 from lerobot.robots.so100_follower.so100_follower import SO100Follower
 from lerobot.teleoperators.phone.config_phone import PhoneConfig, PhoneOS
 from lerobot.utils.robot_utils import busy_wait
 from lerobot.utils.visualization_utils import init_rerun, log_rerun_data
-from teleop_android import AndroidPhone, MapPhoneActionToRobotAction
+from teleop_android import (
+    AndroidPhone,
+    GripperToJoint,
+    MapPhoneActionToRobotAction,
+    WristJoints,
+)
 
 #:
 
 
-FPS = 30
-
+# WARN: Set this to the path of your URDF file for the SO101, you must edit it to
+# add "lower_arm_frame_link", see README.
 PATH_URDF = "../../setup-arm/SO-ARM100/Simulation/SO101/so101_new_calib.urdf"
+
+FPS = 30
 
 #:
 
@@ -40,10 +46,9 @@ teleop_config = PhoneConfig(phone_os=PhoneOS.ANDROID)
 teleop_config.camera_offset = np.array([0.0, -0.01, 0.05])
 teleop_device = AndroidPhone(config=teleop_config)
 
-# NOTE: It is highly recommended to use the urdf in the SO-ARM100 repo: https://github.com/TheRobotStudio/SO-ARM100/blob/main/Simulation/SO101/so101_new_calib.urdf
 kinematics_solver = RobotKinematics(
     urdf_path=PATH_URDF,
-    target_frame_name="gripper_frame_link",
+    target_frame_name="lower_arm_frame_link",
     joint_names=list(robot.bus.motors.keys()),
 )
 
@@ -63,13 +68,14 @@ phone_to_robot_joints_processor = RobotProcessorPipeline[
             end_effector_bounds={"min": [-1.0, -1.0, -1.0], "max": [1.0, 1.0, 1.0]},
             max_ee_step_m=0.10,
         ),
-        GripperVelocityToJoint(
-            speed_factor=20.0,
-        ),
+        GripperToJoint(clip_min=-5.0, clip_max=95.0),
         InverseKinematicsEEToJoints(
             kinematics=kinematics_solver,
             motor_names=list(robot.bus.motors.keys()),
             initial_guess_current_joints=True,
+        ),
+        WristJoints(
+            motor_names=list(robot.bus.motors.keys()),
         ),
     ],
     to_transition=robot_action_observation_to_transition,
@@ -98,12 +104,6 @@ while True:
 
     # Phone -> EE pose -> Joints transition
     joint_action = phone_to_robot_joints_processor((phone_obs, robot_obs))
-
-    # print("Robot obs")
-    # print(robot_obs)
-    # print("Joint action")
-    # print(joint_action)
-    # print("====\n")
 
     # Send action to robot
     _ = robot.send_action(joint_action)

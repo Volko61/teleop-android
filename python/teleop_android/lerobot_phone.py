@@ -11,7 +11,6 @@ from typing import Optional
 
 import numpy as np
 import transforms3d as t3d
-
 from lerobot.teleoperators.phone.teleop_phone import BasePhone, PhoneConfig
 from lerobot.teleoperators.teleoperator import Teleoperator
 from lerobot.utils.errors import DeviceAlreadyConnectedError, DeviceNotConnectedError
@@ -191,15 +190,15 @@ class AndroidPhone(BasePhone, Teleoperator):
 
         ##: Compute robot phone
 
+        if scale < 1.0:
+            pose_phone = interpolate_transforms(
+                self._pose_phone_init, pose_phone, scale
+            )
+
         delta_position = pose_phone[:3, 3] - self._pose_phone_init[:3, 3]
         delta_orientation = pose_phone[:3, :3] @ self._pose_phone_init[:3, :3].T
 
         delta_y_control_pad = control_pad_y - self._y_control_pad_init
-
-        if scale < 1.0:
-            self._pose_robot = interpolate_transforms(
-                self._pose_robot_init, self._pose_robot, scale
-            )
 
         ##: Convert to LeRobot data
 
