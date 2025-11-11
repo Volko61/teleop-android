@@ -2,7 +2,7 @@
 
 An Android-based teleoperation system for the SO101 robot arm with a more intuitive control interface. Built as an alternative to the [LeRobot phone teleoperation setup](https://huggingface.co/docs/lerobot/en/phone_teleop).
 
-[DEMO VIDEO and APP INTERFACE OVERVIEW]()
+[DEMO VIDEO and APP INTERFACE OVERVIEW](https://x.com/giacomo_ran/status/1988301944377799015?s=20)
 
 <img src="assets/demo.gif" width="320" alt="Teleop Android app screenshot" />
 
