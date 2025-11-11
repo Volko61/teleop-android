@@ -2,9 +2,11 @@
 
 I wasn't happy with the [LeRobot phone teleoperation setup](https://huggingface.co/docs/lerobot/en/phone_teleop) for my SO101 robot arm, so I've built my own.
 
-[DEMO VIDEO AND APP EXPLANATION]()
+[DEMO VIDEO and APP INTERFACE OVERVIEW]()
 
-Highlights:
+<img src="assets/demo.gif" width="320" alt="Teleop Android app screenshot" />
+
+**Highlights**:
 
 - Intuitive control:
   - phone's xyz position controls the lower arm tip position
@@ -15,8 +17,6 @@ Highlights:
 - ARCore to estimate the phone's position and orientation (works much better than WebXR on my Pixel 7a)
 - WebSocket server for communication from the Android app to a Python server
 - Integration with LeRobot, both in simulation and hardware
-
-<img src="assets/demo.gif" width="480" alt="Teleop Android app screenshot" />
 
 This project includes:
 
