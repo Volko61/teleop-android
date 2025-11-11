@@ -1,3 +1,10 @@
+# Teleop SO101 arm from Android app
+
+This project includes:
+
+- `python/`: A Python library and examples to teleoperate a SO101 arm with a phone, either in a rerun simulation or on hardware. The Python library runs a server to receive data from the Android app over WebSocket, and implement a few LeRobot processing steps.
+- `android/`: An Android app which sends to the Python server the phone position and orientation estimated with ARCore.
+
 ## Setup
 
 The Python examples assume you've cloned the [SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100) repo with the URDF files.
@@ -22,3 +29,7 @@ Instead of using the 6DoF of the phone to control the gripper tip, in this proje
   <axis xyz="0 0 0"/>
 </joint>
 ```
+
+## Notes
+
+- The `python/certs/` directory contains self-signed SSL certificates for development use only. Do not use these certificates in production.

@@ -1,3 +1,5 @@
+# REFS: https://github.com/SpesRobotics/teleop/blob/main/teleop/__init__.py
+
 import json
 import logging
 import socket
@@ -6,6 +8,9 @@ from typing import Callable, List, TypedDict
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+#:
+# Types for data sent from the Android app
 
 
 class Position(TypedDict):
@@ -31,6 +36,9 @@ class Control(TypedDict):
     y: float
     isFineControl: bool
     isActive: bool
+
+
+#:
 
 
 def get_local_ip() -> str:

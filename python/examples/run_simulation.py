@@ -175,6 +175,7 @@ phone_to_robot_joints_processor = RobotProcessorPipeline[
         ),
         WristJoints(
             motor_names=list(MOTOR_TO_RERUN.keys()),
+            kinematics=kinematics_solver,
         ),
     ],
     to_transition=robot_action_observation_to_transition,

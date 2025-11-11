@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import transforms3d as t3d
 from lerobot.configs.types import FeatureType, PipelineFeatureType, PolicyFeature
+from lerobot.model.kinematics import RobotKinematics
 from lerobot.processor import (
     ProcessorStepRegistry,
     RobotAction,
@@ -125,12 +126,19 @@ class MapPhoneActionToRobotAction(RobotActionProcessorStep):
 @dataclass
 class WristJoints(RobotActionProcessorStep):
     """
-    TODO:
+    Maps wrist flex/roll deltas to absolute wrist joint positions.
+
+    For wrist flex, compensates for lower arm rotation to keep the wrist flex
+    angle relative to the world constant unless the phone's pitch changes.
     """
 
     motor_names: list[str]
+    kinematics: RobotKinematics
 
     pos_wrist_reference: np.ndarray | None = field(default=None, init=False, repr=False)
+    pitch_lower_arm_reference: float | None = field(
+        default=None, init=False, repr=False
+    )
     _enabled_prev: bool = field(default=False, init=False, repr=False)
     _pos_wrist_disabled: np.ndarray | None = field(default=None, init=False, repr=False)
 
@@ -161,14 +169,31 @@ class WristJoints(RobotActionProcessorStep):
             # Latched reference mode: latch reference at the rising edge
             if not self._enabled_prev or self.pos_wrist_reference is None:
                 self.pos_wrist_reference = pos_wrist_obs
+                pose_lower_arm = self._compute_pose_lower_arm(observation)
+                pitch_lower_arm = self._extract_pitch(pose_lower_arm)
+                self.pitch_lower_arm_reference = pitch_lower_arm
+
             pos_wrist_reference = (
                 self.pos_wrist_reference
                 if self.pos_wrist_reference is not None
                 else pos_wrist_obs
             )
 
+            # Compensate for lower arm rotation for wrist flex
+            if self.pitch_lower_arm_reference is not None:
+                pose_lower_arm = self._compute_pose_lower_arm(observation)
+                pitch_lower_arm = self._extract_pitch(pose_lower_arm)
+                delta_degrees_pitch_lower_arm = (
+                    pitch_lower_arm - self.pitch_lower_arm_reference
+                )
+                compensated_delta_flex = (
+                    delta_degrees_flex - delta_degrees_pitch_lower_arm
+                )
+            else:
+                compensated_delta_flex = delta_degrees_flex
+
             pos_wrist_desired = pos_wrist_reference + np.array(
-                [delta_degrees_flex, delta_degrees_roll]
+                [compensated_delta_flex, delta_degrees_roll]
             )
 
             self._pos_wrist_disabled = pos_wrist_desired.copy()
@@ -185,9 +210,35 @@ class WristJoints(RobotActionProcessorStep):
         self._enabled_prev = enabled
         return action
 
+    def _compute_pose_lower_arm(self, observation: dict) -> np.ndarray:
+        """Compute lower arm frame pose using forward kinematics."""
+        # Extract joint positions from observation, following EEReferenceAndDelta pattern
+        q_raw = np.array(
+            [
+                float(v)
+                for k, v in observation.items()
+                if isinstance(k, str)
+                and k.endswith(".pos")
+                and k.removesuffix(".pos") in self.motor_names
+            ],
+            dtype=float,
+        )
+
+        # Compute forward kinematics to get lower arm frame pose
+        pose_matrix = self.kinematics.forward_kinematics(q_raw)
+        return pose_matrix
+
+    def _extract_pitch(self, pose_matrix: np.ndarray) -> float:
+        """Extract pitch angle (rotation around y-axis) from pose matrix in degrees."""
+        euler_rad = t3d.euler.mat2euler(pose_matrix[:3, :3], axes="sxyz")
+        # TODO: Figure out why we need to flip the sign here
+        pitch_rad = -euler_rad[1]
+        return np.degrees(pitch_rad)
+
     def reset(self):
         """Resets the internal state of the processor."""
         self.pos_wrist_reference = None
+        self.pitch_lower_arm_reference = None
         self._enabled_prev = False
         self._pos_wrist_disabled = None
 
