@@ -7,13 +7,13 @@ from lerobot.processor.converters import (
     robot_action_observation_to_transition,
     transition_to_robot_action,
 )
-from lerobot.robots.so100_follower.config_so100_follower import SO100FollowerConfig
 from lerobot.robots.so100_follower.robot_kinematic_processor import (
     EEBoundsAndSafety,
     EEReferenceAndDelta,
     InverseKinematicsEEToJoints,
 )
-from lerobot.robots.so100_follower.so100_follower import SO100Follower
+from lerobot.robots.so101_follower.config_so101_follower import SO101FollowerConfig
+from lerobot.robots.so101_follower.so101_follower import SO101Follower
 from lerobot.teleoperators.phone.config_phone import PhoneConfig, PhoneOS
 from lerobot.utils.robot_utils import busy_wait
 from lerobot.utils.visualization_utils import init_rerun, log_rerun_data
@@ -36,10 +36,10 @@ FPS = 30
 #:
 
 # Initialize the robot
-robot_config = SO100FollowerConfig(
+robot_config = SO101FollowerConfig(
     port="/dev/tty.usbmodem5A460829821", id="arm_follower_0", use_degrees=True
 )
-robot = SO100Follower(robot_config)
+robot = SO101Follower(robot_config)
 
 # Initialize the telooperator
 teleop_config = PhoneConfig(phone_os=PhoneOS.ANDROID)

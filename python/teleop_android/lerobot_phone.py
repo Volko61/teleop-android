@@ -30,9 +30,18 @@ logger = logging.getLogger(__name__)
 class AndroidPhone(BasePhone, Teleoperator):
     name = "android_phone"
 
-    def __init__(self, config: PhoneConfig):
+    def __init__(self, config: PhoneConfig, certs_dir: Optional[str] = None):
+        """
+        Initialize AndroidPhone teleoperator.
+
+        Args:
+            config: Phone configuration.
+            certs_dir: Path to directory containing SSL certificate files (server.crt and server.key).
+                If None, defaults to looking for certs relative to the package location.
+        """
         super().__init__(config)
         self.config = config
+        self._certs_dir = certs_dir
 
         self._teleop_server = None
 
@@ -59,7 +68,7 @@ class AndroidPhone(BasePhone, Teleoperator):
             raise DeviceAlreadyConnectedError(f"{self} already connected")
 
         logger.info("Starting teleop stream for Android...")
-        self._teleop_server = TeleopServer()
+        self._teleop_server = TeleopServer(certs_dir=self._certs_dir)
         self._teleop_server.subscribe_pose(self._callback_pose_android)
         self._teleop_server.subscribe_control(self._callback_control_android)
         self._thread_android = threading.Thread(

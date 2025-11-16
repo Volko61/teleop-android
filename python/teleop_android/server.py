@@ -4,7 +4,7 @@ import json
 import logging
 import socket
 from pathlib import Path
-from typing import Callable, List, TypedDict
+from typing import Callable, List, Optional, TypedDict
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -77,15 +77,20 @@ class TeleopServer:
     Args:
         host: The host IP address. Defaults to "0.0.0.0".
         port: The port number. Defaults to 4443.
+        certs_dir: Path to directory containing SSL certificate files (server.crt and server.key).
+            If None, defaults to looking for certs relative to the package location.
     """
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 4443):
+    def __init__(
+        self, host: str = "0.0.0.0", port: int = 4443, certs_dir: Optional[str] = None
+    ):
         self.__logger = logging.getLogger("teleop")
         self.__logger.setLevel(logging.INFO)
         self.__logger.addHandler(logging.StreamHandler())
 
         self.__host = host
         self.__port = port
+        self.__certs_dir = certs_dir
         self.__pose_callbacks: List[Callable[[Pose], None]] = []
         self.__control_callbacks: List[Callable[[Control], None]] = []
 
@@ -159,17 +164,22 @@ class TeleopServer:
                 self.__manager.disconnect(websocket)
                 self.__logger.info("Client disconnected")
 
-    def run(self, ssl_certfile: str = None, ssl_keyfile: str = None) -> None:
+    def run(
+        self, ssl_certfile: Optional[str] = None, ssl_keyfile: Optional[str] = None
+    ) -> None:
         """
         Run the WebSocket server. This method is blocking.
 
         Args:
-            ssl_certfile: Path to SSL certificate file. Defaults to certs/server.crt.
-            ssl_keyfile: Path to SSL key file. Defaults to certs/server.key.
+            ssl_certfile: Path to SSL certificate file. If None, uses certs_dir/server.crt.
+            ssl_keyfile: Path to SSL key file. If None, uses certs_dir/server.key.
         """
         # Use default certificate paths if not provided
         if ssl_certfile is None or ssl_keyfile is None:
-            cert_dir = Path(__file__).parent.parent / "certs"
+            if self.__certs_dir is not None:
+                cert_dir = Path(self.__certs_dir)
+            else:
+                cert_dir = Path(__file__).parent.parent / "certs"
             ssl_certfile = str(cert_dir / "server.crt")
             ssl_keyfile = str(cert_dir / "server.key")
 
