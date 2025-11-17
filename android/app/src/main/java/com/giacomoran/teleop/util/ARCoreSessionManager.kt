@@ -232,6 +232,15 @@ class ARCoreSessionManager(private val activity: Activity) {
 
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
             Log.d(TAG, "OpenGL surface changed: ${width}x${height}")
+
+            // Session display geometry needs to be updated when the device is rotated
+            // or the surface size changes
+            // Note: activity.display is deprecated in API 30, but okay for minSdk 29
+            // A more robust solution would involve a display listener
+            activity.display?.let { display ->
+                session?.setDisplayGeometry(display.rotation, width, height)
+            }
+
             // Initialize camera texture when surface is ready
             if (!sessionState.isTextureInitialized && session != null) {
                 try {
@@ -293,18 +302,21 @@ class ARCoreSessionManager(private val activity: Activity) {
                 // This detects when ARCore stalls or stops providing updates
                 trackingTracker.onARCoreUpdate(camera.trackingState)
 
-                val pose = camera.pose
+                // Only process pose if tracking is stable
+                if (camera.trackingState == TrackingState.TRACKING) {
+                    val pose = camera.displayOrientedPose
 
-                // Extract position (translation)
-                val position = FloatArray(3)
-                pose.getTranslation(position, 0)
+                    // Extract position (translation)
+                    val position = FloatArray(3)
+                    pose.getTranslation(position, 0)
 
-                // Extract orientation (quaternion) X, Y, Z, W
-                val quaternion = FloatArray(4)
-                pose.getRotationQuaternion(quaternion, 0)
+                    // Extract orientation (quaternion) X, Y, Z, W
+                    val quaternion = FloatArray(4)
+                    pose.getRotationQuaternion(quaternion, 0)
 
-                // Update pose state
-                _poseState.value = PoseState.Pose(position, quaternion)
+                    // Update pose state
+                    _poseState.value = PoseState.Pose(position, quaternion)
+                }
 
             } catch (e: CameraNotAvailableException) {
                 Log.e(TAG, "Camera not available", e)

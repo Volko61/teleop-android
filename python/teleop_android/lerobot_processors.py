@@ -14,7 +14,7 @@ from lerobot.processor import (
 from lerobot.utils.rotation import Rotation
 
 from .lerobot_utils import (
-    extract_pitch_roll_from_matrix,
+    compute_wrist_deltas_from_phone_and_arm,
 )
 
 #: MapPhoneActionToRobotAction
@@ -45,20 +45,20 @@ class MapPhoneActionToRobotAction(RobotActionProcessorStep):
         enabled = bool(action.pop("phone.enabled"))
         # Position delta for the phone
         pos = action.pop("phone.pos")
-        # Orientation delta for the phone (still needed for backward compatibility, but pitch/roll come from raw_inputs)
+        # Orientation delta for the phone (unused, kept for backward compatibility)
         rot = action.pop("phone.rot")
         inputs = action.pop("phone.raw_inputs")
-
         if pos is None or rot is None:
             raise ValueError("pos and rot must be present in action")
 
-        # Extract pitch and roll deltas directly from raw_inputs (avoids gimbal lock)
-        # These were computed as angle differences in lerobot_phone.py
-        delta_rad_pitch_phone = float(inputs.get("delta_rad_pitch_phone", 0.0))
-        delta_rad_roll_phone = float(inputs.get("delta_rad_roll_phone", 0.0))
+        orientation_phone = inputs.get("orientation_phone")
+        if orientation_phone is None:
+            raise ValueError("orientation_phone must be present in action")
 
         rotvec_identity = Rotation.from_matrix(np.eye(3)).as_rotvec()
         delta_y_control_pad = float(inputs.get("delta_y_control_pad", 0.0))
+
+        rotvec_phone = orientation_phone.as_rotvec()
 
         action["enabled"] = enabled
         # "target_{x,y,z}" represent a position delta (see EEReferenceAndDelta implementation)
@@ -73,11 +73,10 @@ class MapPhoneActionToRobotAction(RobotActionProcessorStep):
         action["target_wz"] = rotvec_identity[2]
         # Same as "enabled", the EEReferenceAndDelta step pops "enabled" so we store
         # an additional copy that is popped by WristJoints.
-        # Note that wrist roll is flipped.
         action["wrist_enabled"] = enabled
-        # Use pitch and roll deltas extracted directly from poses (avoids gimbal lock)
-        action["wrist_delta_degrees_flex"] = np.degrees(delta_rad_pitch_phone)
-        action["wrist_delta_degrees_roll"] = -np.degrees(delta_rad_roll_phone)
+        action["wrist_phone_wx"] = rotvec_phone[0]
+        action["wrist_phone_wy"] = rotvec_phone[1]
+        action["wrist_phone_wz"] = rotvec_phone[2]
         # Same as "enabled", store an additional copy for GripperToJoint
         action["gripper_enabled"] = enabled
         action["gripper_delta_y_control_pad"] = delta_y_control_pad if enabled else 0.0
@@ -100,8 +99,9 @@ class MapPhoneActionToRobotAction(RobotActionProcessorStep):
             "target_wy",
             "target_wz",
             "wrist_enabled",
-            "wrist_delta_degrees_flex",
-            "wrist_delta_degrees_roll",
+            "wrist_phone_wx",
+            "wrist_phone_wy",
+            "wrist_phone_wz",
             "gripper_enabled",
             "gripper_delta_y_control_pad",
             "gripper_vel",
@@ -131,10 +131,13 @@ class WristJoints(RobotActionProcessorStep):
     motor_names: list[str]
     kinematics: RobotKinematics
 
-    pos_wrist_reference: np.ndarray | None = field(default=None, init=False, repr=False)
-    pitch_lower_arm_reference: float | None = field(
+    orientation_lower_arm_init: np.ndarray | None = field(
         default=None, init=False, repr=False
     )
+    orientation_phone_init: np.ndarray | None = field(
+        default=None, init=False, repr=False
+    )
+    pos_wrist_init: np.ndarray | None = field(default=None, init=False, repr=False)
     _enabled_prev: bool = field(default=False, init=False, repr=False)
     _pos_wrist_disabled: np.ndarray | None = field(default=None, init=False, repr=False)
 
@@ -156,40 +159,38 @@ class WristJoints(RobotActionProcessorStep):
         )
 
         enabled = bool(action.pop("wrist_enabled"))
-        delta_degrees_flex = float(action.pop("wrist_delta_degrees_flex"))
-        delta_degrees_roll = float(action.pop("wrist_delta_degrees_roll"))
+        phone_wx = float(action.pop("wrist_phone_wx"))
+        phone_wy = float(action.pop("wrist_phone_wy"))
+        phone_wz = float(action.pop("wrist_phone_wz"))
 
+        orientation_phone = Rotation.from_rotvec(
+            [phone_wx, phone_wy, phone_wz]
+        ).as_matrix()
+        pose_lower_arm = self._compute_pose_lower_arm(observation)
         pos_wrist_desired = None
 
         if enabled:
             # Latched reference mode: latch reference at the rising edge
-            if not self._enabled_prev or self.pos_wrist_reference is None:
-                self.pos_wrist_reference = pos_wrist_obs
-                pose_lower_arm = self._compute_pose_lower_arm(observation)
-                pitch_lower_arm = self._extract_pitch(pose_lower_arm)
-                self.pitch_lower_arm_reference = pitch_lower_arm
+            if (
+                not self._enabled_prev
+                or self.orientation_lower_arm_init is None
+                or self.orientation_phone_init is None
+                or self.pos_wrist_init is None
+            ):
+                self.orientation_lower_arm_init = pose_lower_arm[:3, :3]
+                self.orientation_phone_init = orientation_phone
+                self.pos_wrist_init = pos_wrist_obs
 
-            pos_wrist_reference = (
-                self.pos_wrist_reference
-                if self.pos_wrist_reference is not None
-                else pos_wrist_obs
+            delta_rad_pitch, delta_rad_roll = compute_wrist_deltas_from_phone_and_arm(
+                orientation_phone,
+                pose_lower_arm[:3, :3],
+                self.orientation_phone_init,
+                self.orientation_lower_arm_init,
             )
 
-            # Compensate for lower arm rotation for wrist flex
-            if self.pitch_lower_arm_reference is not None:
-                pose_lower_arm = self._compute_pose_lower_arm(observation)
-                pitch_lower_arm = self._extract_pitch(pose_lower_arm)
-                delta_degrees_pitch_lower_arm = (
-                    pitch_lower_arm - self.pitch_lower_arm_reference
-                )
-                compensated_delta_flex = (
-                    delta_degrees_flex - delta_degrees_pitch_lower_arm
-                )
-            else:
-                compensated_delta_flex = delta_degrees_flex
-
-            pos_wrist_desired = pos_wrist_reference + np.array(
-                [compensated_delta_flex, delta_degrees_roll]
+            # Note that in the robot's "pos" the roll sign is flipped
+            pos_wrist_desired = self.pos_wrist_init + np.degrees(
+                np.array([delta_rad_pitch, -delta_rad_roll])
             )
 
             self._pos_wrist_disabled = pos_wrist_desired.copy()
@@ -224,18 +225,11 @@ class WristJoints(RobotActionProcessorStep):
         pose_matrix = self.kinematics.forward_kinematics(q_raw)
         return pose_matrix
 
-    def _extract_pitch(self, pose_matrix: np.ndarray) -> float:
-        """Extract pitch angle (rotation around y-axis) from pose matrix in degrees.
-
-        Uses the same extraction method as lerobot_phone.py to avoid gimbal lock.
-        """
-        pitch_rad, _ = extract_pitch_roll_from_matrix(pose_matrix[:3, :3])
-        return np.degrees(pitch_rad)
-
     def reset(self):
         """Resets the internal state of the processor."""
-        self.pos_wrist_reference = None
-        self.pitch_lower_arm_reference = None
+        self.orientation_lower_arm_init = None
+        self.orientation_phone_init = None
+        self.pos_wrist_init = None
         self._enabled_prev = False
         self._pos_wrist_disabled = None
 
@@ -244,8 +238,9 @@ class WristJoints(RobotActionProcessorStep):
     ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
         for feat in [
             "wrist_enabled",
-            "wrist_delta_degrees_flex",
-            "wrist_delta_degrees_roll",
+            "wrist_phone_wx",
+            "wrist_phone_wy",
+            "wrist_phone_wz",
         ]:
             features[PipelineFeatureType.ACTION].pop(f"{feat}", None)
 
@@ -276,7 +271,7 @@ class GripperToJoint(RobotActionProcessorStep):
     clip_max: float = 100.0
     speed_factor: float = 50.0
 
-    pos_gripper_reference: float | None = field(default=None, init=False, repr=False)
+    pos_gripper_init: float | None = field(default=None, init=False, repr=False)
     _enabled_prev: bool = field(default=False, init=False, repr=False)
     _pos_gripper_disabled: float | None = field(default=None, init=False, repr=False)
 
@@ -298,11 +293,11 @@ class GripperToJoint(RobotActionProcessorStep):
 
         if enabled:
             # Latched reference mode: latch reference at the rising edge
-            if not self._enabled_prev or self.pos_gripper_reference is None:
-                self.pos_gripper_reference = pos_gripper
-            pos_gripper_reference = (
-                self.pos_gripper_reference
-                if self.pos_gripper_reference is not None
+            if not self._enabled_prev or self.pos_gripper_init is None:
+                self.pos_gripper_init = pos_gripper
+            pos_gripper_init = (
+                self.pos_gripper_init
+                if self.pos_gripper_init is not None
                 else pos_gripper
             )
 
@@ -312,7 +307,7 @@ class GripperToJoint(RobotActionProcessorStep):
             delta_gripper_pos = delta_y_control_pad * self.speed_factor
 
             # Add delta to reference position
-            pos_gripper_desired = pos_gripper_reference + delta_gripper_pos
+            pos_gripper_desired = pos_gripper_init + delta_gripper_pos
 
             # Clip between clip_min and clip_max
             pos_gripper_desired = float(
@@ -334,7 +329,7 @@ class GripperToJoint(RobotActionProcessorStep):
 
     def reset(self):
         """Resets the internal state of the processor."""
-        self.pos_gripper_reference = None
+        self.pos_gripper_init = None
         self._enabled_prev = False
         self._pos_gripper_disabled = None
 

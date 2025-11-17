@@ -183,7 +183,9 @@ phone_to_robot_joints_processor = RobotProcessorPipeline[
     to_output=transition_to_robot_action,
 )
 
-teleop_device = AndroidPhone(config=PhoneConfig(phone_os=PhoneOS.ANDROID))
+config_teleop_device = PhoneConfig(phone_os=PhoneOS.ANDROID)
+config_teleop_device.camera_offset = np.array([0.0, -0.02, 0.1])
+teleop_device = AndroidPhone(config=config_teleop_device)
 
 
 def callback_pose_android(message: Pose) -> None:
@@ -199,14 +201,23 @@ def callback_pose_android(message: Pose) -> None:
             orientation_rub["z"],
         ]
     )
+    # This rotates a vector expressed in RUB phone coordinates into the RUB world coordinate
     orientation_rub_matrix = t3d.quaternions.quat2mat(orientation_rub_quaternion_wxyz)
 
-    # Transform data RUB to FLU coordinate system, to plot time series
+    # Transform data RUB to FLU coordinate system
     orientation_flu_matrix = (
         TF_RUB2FLU[:3, :3] @ orientation_rub_matrix @ TF_RUB2FLU[:3, :3].T
     )
-    position_flu = TF_RUB2FLU[:3, :3] @ position_rub
-    pose_flu = t3d.affines.compose(position_flu, orientation_flu_matrix, [1, 1, 1])
+    position_camera_flu = TF_RUB2FLU[:3, :3] @ position_rub
+
+    # Compensate for camera offset: ARCore reports camera position, but we want phone bottom position
+    # camera_offset is in the phone FLU frame
+    camera_offset_world = orientation_flu_matrix @ config_teleop_device.camera_offset
+    position_phone_flu = position_camera_flu - camera_offset_world
+
+    pose_flu = t3d.affines.compose(
+        position_phone_flu, orientation_flu_matrix, [1, 1, 1]
+    )
 
     # forward, left, up -> roll, pitch, yaw
     orientation_flu_euler = np.degrees(
@@ -258,6 +269,56 @@ while True:
 
     # Phone -> EE pose -> Joints transition
     joint_action = phone_to_robot_joints_processor((phone_obs, robot_obs))
+
+    # Compute and visualize lower arm frame pose
+    q_raw = np.array(
+        [float(robot_obs[f"{motor}.pos"]) for motor in MOTOR_TO_RERUN.keys()],
+        dtype=float,
+    )
+    pose_lower_arm = kinematics_solver.forward_kinematics(q_raw)
+
+    # Extract position and orientation
+    position_lower_arm = pose_lower_arm[:3, 3]
+    orientation_lower_arm_matrix = pose_lower_arm[:3, :3]
+
+    # Convert rotation matrix to quaternion (xyzw format for Rerun)
+    orientation_lower_arm_quaternion_wxyz = t3d.quaternions.mat2quat(
+        orientation_lower_arm_matrix
+    )
+    orientation_lower_arm_quaternion_xyzw = (
+        TF_WXYZ_TO_XYZW @ orientation_lower_arm_quaternion_wxyz
+    )
+
+    # Log lower arm frame transform
+    rr.log(
+        "/world_robot/lower_arm_frame",
+        rr.Transform3D(
+            translation=position_lower_arm,
+            rotation=rr.Quaternion(xyzw=orientation_lower_arm_quaternion_xyzw),
+        ),
+    )
+
+    # Log lower arm frame trajectory
+    rr.log(
+        "/world_robot/trajectory_lower_arm",
+        rr.Points3D([position_lower_arm]),
+    )
+
+    # Log coordinate axes for the lower arm frame (in world coordinates)
+    # The rotation matrix columns are the frame's x, y, z axes in world coordinates
+    ARROW_SCALE = 0.2
+    rr.log(
+        "/world_robot/lower_arm_frame_axes",
+        rr.Arrows3D(
+            origins=[position_lower_arm, position_lower_arm, position_lower_arm],
+            vectors=[
+                orientation_lower_arm_matrix[:, 0] * ARROW_SCALE,  # x-axis (red)
+                orientation_lower_arm_matrix[:, 1] * ARROW_SCALE,  # y-axis (green)
+                orientation_lower_arm_matrix[:, 2] * ARROW_SCALE,  # z-axis (blue)
+            ],
+            colors=[[231, 76, 60], [39, 174, 96], [52, 120, 219]],  # Red, Green, Blue
+        ),
+    )
 
     # Update simulated robot state
     robot_obs = joint_action

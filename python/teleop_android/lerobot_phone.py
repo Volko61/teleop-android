@@ -17,8 +17,8 @@ from lerobot.utils.rotation import Rotation
 from .lerobot_utils import (
     TF_RUB2FLU,
     are_close,
-    extract_pitch_roll_from_matrix,
     interpolate_transforms,
+    matrix_t3d_to_rotation,
 )
 from .server import Control, Pose, TeleopServer
 
@@ -103,7 +103,10 @@ class AndroidPhone(BasePhone, Teleoperator):
             "phone.enabled": False,
             "phone.pos": np.array([0, 0, 0]),
             "phone.rot": Rotation.from_matrix(np.eye(3)),
-            "phone.raw_inputs": {},
+            "phone.raw_inputs": {
+                "delta_y_control_pad": 0,
+                "orientation_phone": Rotation.from_matrix(np.eye(3)),
+            },
         }
 
         ##: Read latest pose and control data received from the Android phone
@@ -147,10 +150,15 @@ class AndroidPhone(BasePhone, Teleoperator):
         orientation_matrix = (
             TF_RUB2FLU[:3, :3] @ orientation_rub_matrix @ TF_RUB2FLU[:3, :3].T
         )
-        position = TF_RUB2FLU[:3, :3] @ position_rub
+        position_camera = TF_RUB2FLU[:3, :3] @ position_rub
+
+        # Compensate for camera offset: ARCore reports camera position, but we want phone center position
+        # camera_offset is in phone's local FLU frame, so rotate it to world frame
+        camera_offset_world = orientation_matrix @ self.config.camera_offset
+        position_phone = position_camera - camera_offset_world
 
         # Create 4x4 pose matrix, combining position, orientation, and scale
-        pose_phone = t3d.affines.compose(position, orientation_matrix, [1, 1, 1])
+        pose_phone = t3d.affines.compose(position_phone, orientation_matrix, [1, 1, 1])
 
         ##: Handle edge cases
 
@@ -206,32 +214,22 @@ class AndroidPhone(BasePhone, Teleoperator):
                 self._pose_phone_init, pose_phone, scale
             )
 
-        # Extract pitch and roll from current and initial poses
-        pitch_phone, roll_phone = extract_pitch_roll_from_matrix(pose_phone[:3, :3])
-        pitch_phone_init, roll_phone_init = extract_pitch_roll_from_matrix(
-            self._pose_phone_init[:3, :3]
-        )
-
-        # Compute deltas directly as angle differences (avoids gimbal lock from rotation matrix multiplication)
-        # Note: If scale < 1.0, the interpolation above already scaled the pose, so deltas are already scaled
-        delta_rad_pitch_phone = pitch_phone - pitch_phone_init
-        delta_rad_roll_phone = roll_phone - roll_phone_init
-
         delta_position = pose_phone[:3, 3] - self._pose_phone_init[:3, 3]
+        delta_orientation = self._pose_phone_init[:3, :3].T @ pose_phone[:3, :3]
         delta_y_control_pad = control_pad_y - self._y_control_pad_init
 
         ##: Convert to LeRobot data
         # See `lerobot_processors.py` for how this data is used. We tried as much as possible
         # to stick to LeRobot's original phone teleop implementation.
-        # NOTE: Unused, see MapPhoneActionToRobotAction
-        rot = Rotation.from_matrix(np.eye(3))
+
+        rot = matrix_t3d_to_rotation(delta_orientation)
         pos = delta_position
+
+        orientation_phone = matrix_t3d_to_rotation(pose_phone[:3, :3])
 
         raw_inputs = control.copy()
         raw_inputs["delta_y_control_pad"] = delta_y_control_pad
-        # Store pitch and roll deltas directly (extracted from poses, not from delta rotation matrix)
-        raw_inputs["delta_rad_pitch_phone"] = delta_rad_pitch_phone
-        raw_inputs["delta_rad_roll_phone"] = delta_rad_roll_phone
+        raw_inputs["orientation_phone"] = orientation_phone
 
         assert self._enabled
         return {

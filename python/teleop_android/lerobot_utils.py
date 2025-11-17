@@ -2,6 +2,7 @@ import math
 
 import numpy as np
 import transforms3d as t3d
+from lerobot.utils.rotation import Rotation
 
 #:
 
@@ -110,23 +111,52 @@ def interpolate_transforms(T1, T2, alpha):
     return T_interp
 
 
-def extract_pitch_roll_from_matrix(R):
+def compute_wrist_deltas_from_phone_and_arm(
+    orientation_matrix_phone: np.ndarray,
+    orientation_matrix_arm: np.ndarray,
+    orientation_matrix_phone_init: np.ndarray,
+    orientation_matrix_arm_init: np.ndarray,
+) -> tuple[float, float]:
     """
-    Extract pitch and roll angles from a 3x3 rotation matrix using ZYX convention.
-
-    This method avoids Euler angle conversion that can cause gimbal lock.
-    Uses the same convention as are_close: ZYX (yaw around Z, pitch around Y, roll around X).
+    Compute wrist flex and roll angles from phone and arm rotations.
 
     Args:
-        R (np.ndarray): 3x3 rotation matrix
+        orientation_matrix_phone: Current phone rotation in world frame (3x3)
+        orientation_matrix_arm: Current lower arm rotation in world frame (3x3)
+        orientation_matrix_phone_init: Initial phone rotation in world frame (3x3)
+        orientation_matrix_arm_init: Initial lower arm rotation in world frame (3x3)
 
     Returns:
-        tuple: (pitch_rad, roll_rad) in radians
+        (delta_rad_pitch, delta_rad_roll): Wrist delta angles in radians
     """
-    # ZYX decomposition (matches are_close convention)
-    # pitch = rotation around Y axis
-    pitch_rad = math.asin(-np.clip(R[2, 0], -1.0, 1.0))
-    # roll = rotation around X axis
-    roll_rad = math.atan2(R[2, 1], R[2, 2])
+    # Compute phone's orientation in the lower arm frame coordinates
+    orientation_wrist = orientation_matrix_arm.T @ orientation_matrix_phone
+    orientation_wrist_init = (
+        orientation_matrix_arm_init.T @ orientation_matrix_phone_init
+    )
 
-    return pitch_rad, roll_rad
+    # Compute delta rotation: how the phone rotated since calibration, expressed in the lower arm frame
+    delta_orientation_wrist = orientation_wrist_init.T @ orientation_wrist
+
+    # Extract pitch using wrist joint convention (relative to arm)
+    # Note that the lower arm frame coordinates are DLF instead of FLU
+    _, delta_rad_pitch, _ = t3d.euler.mat2euler(delta_orientation_wrist, axes="sxyz")
+
+    # Compute roll independently in world frame (not relative to arm roll)
+    # Compute phone's rotation delta in world frame
+    delta_orientation_phone_world = (
+        orientation_matrix_phone_init.T @ orientation_matrix_phone
+    )
+
+    # Extract roll from the phone's rotation delta in world frame, this gives roll independent of arm roll
+    delta_rad_roll, _, _ = t3d.euler.mat2euler(
+        delta_orientation_phone_world, axes="sxyz"
+    )
+
+    return delta_rad_pitch, delta_rad_roll
+
+
+def matrix_t3d_to_rotation(orientation_matrix) -> Rotation:
+    orientation_quaternion_wxyz = t3d.quaternions.mat2quat(orientation_matrix)
+    orientation_quaternion_xyzw = TF_WXYZ_TO_XYZW @ orientation_quaternion_wxyz
+    return Rotation.from_quat(orientation_quaternion_xyzw)
