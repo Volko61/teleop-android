@@ -233,14 +233,6 @@ class ARCoreSessionManager(private val activity: Activity) {
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
             Log.d(TAG, "OpenGL surface changed: ${width}x${height}")
 
-            // Session display geometry needs to be updated when the device is rotated
-            // or the surface size changes
-            // Note: activity.display is deprecated in API 30, but okay for minSdk 29
-            // A more robust solution would involve a display listener
-            activity.display?.let { display ->
-                session?.setDisplayGeometry(display.rotation, width, height)
-            }
-
             // Initialize camera texture when surface is ready
             if (!sessionState.isTextureInitialized && session != null) {
                 try {
@@ -304,7 +296,7 @@ class ARCoreSessionManager(private val activity: Activity) {
 
                 // Only process pose if tracking is stable
                 if (camera.trackingState == TrackingState.TRACKING) {
-                    val pose = camera.displayOrientedPose
+                    val pose = camera.pose
 
                     // Extract position (translation)
                     val position = FloatArray(3)

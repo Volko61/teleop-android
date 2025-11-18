@@ -15,6 +15,7 @@ from lerobot.utils.errors import DeviceAlreadyConnectedError, DeviceNotConnected
 from lerobot.utils.rotation import Rotation
 
 from .lerobot_utils import (
+    ORIENTATION_POTRAIT,
     TF_RUB2FLU,
     are_close,
     interpolate_transforms,
@@ -149,10 +150,12 @@ class AndroidPhone(BasePhone, Teleoperator):
         control_pad_y = float(control.get("y", 0.0))
 
         # Transform RUB (used by ARCore) to FLU (used by LeRobot) coordinate system
+        position_camera = TF_RUB2FLU[:3, :3] @ position_rub
         orientation_matrix = (
             TF_RUB2FLU[:3, :3] @ orientation_rub_matrix @ TF_RUB2FLU[:3, :3].T
         )
-        position_camera = TF_RUB2FLU[:3, :3] @ position_rub
+        # Rotate by -90 degrees around x-axis to account for portrait mode
+        orientation_matrix = orientation_matrix @ ORIENTATION_POTRAIT
 
         # Compensate for camera offset: ARCore reports camera position, but we want phone bottom position
         # camera_offset is in phone's local FLU frame, so rotate it to world frame

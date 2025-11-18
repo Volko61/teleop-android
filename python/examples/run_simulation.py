@@ -84,6 +84,8 @@ TF_RUB2FLU = np.array([[0, 0, -1, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]]
 TF_XYZW_TO_WXYZ = np.array([[0, 0, 0, 1], [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]])
 TF_WXYZ_TO_XYZW = np.array([[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 0, 0, 0]])
 
+ORIENTATION_POTRAIT = t3d.euler.euler2mat(-np.pi / 2, 0, 0, "sxyz")
+
 
 #: Init Rerun
 
@@ -205,10 +207,12 @@ def callback_pose_android(message: Pose) -> None:
     orientation_rub_matrix = t3d.quaternions.quat2mat(orientation_rub_quaternion_wxyz)
 
     # Transform data RUB to FLU coordinate system
+    position_camera_flu = TF_RUB2FLU[:3, :3] @ position_rub
     orientation_flu_matrix = (
         TF_RUB2FLU[:3, :3] @ orientation_rub_matrix @ TF_RUB2FLU[:3, :3].T
     )
-    position_camera_flu = TF_RUB2FLU[:3, :3] @ position_rub
+    # Rotate by -90 degrees around x-axis to account for portrait mode
+    orientation_flu_matrix = orientation_flu_matrix @ ORIENTATION_POTRAIT
 
     # Compensate for camera offset: ARCore reports camera position, but we want phone bottom position
     # camera_offset is in the phone FLU frame
