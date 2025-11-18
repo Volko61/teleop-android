@@ -140,6 +140,8 @@ class AndroidPhone(BasePhone, Teleoperator):
             ]
         )
 
+        # This represents the phone's frame relative to the world frame.
+        # I.e. transforms a vector in (RUB) phone coordinates to a vector in (RUB) world coordinates.
         orientation_rub_matrix = t3d.quaternions.quat2mat(
             orientation_rub_quaternion_wxyz
         )
@@ -152,7 +154,7 @@ class AndroidPhone(BasePhone, Teleoperator):
         )
         position_camera = TF_RUB2FLU[:3, :3] @ position_rub
 
-        # Compensate for camera offset: ARCore reports camera position, but we want phone center position
+        # Compensate for camera offset: ARCore reports camera position, but we want phone bottom position
         # camera_offset is in phone's local FLU frame, so rotate it to world frame
         camera_offset_world = orientation_matrix @ self.config.camera_offset
         position_phone = position_camera - camera_offset_world

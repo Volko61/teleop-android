@@ -181,7 +181,7 @@ class WristJoints(RobotActionProcessorStep):
                 self.orientation_phone_init = orientation_phone
                 self.pos_wrist_init = pos_wrist_obs
 
-            delta_rad_pitch, delta_rad_roll = compute_wrist_deltas_from_phone_and_arm(
+            rad_delta_pitch, rad_delta_roll = compute_wrist_deltas_from_phone_and_arm(
                 orientation_phone,
                 pose_lower_arm[:3, :3],
                 self.orientation_phone_init,
@@ -190,7 +190,7 @@ class WristJoints(RobotActionProcessorStep):
 
             # Note that in the robot's "pos" the roll sign is flipped
             pos_wrist_desired = self.pos_wrist_init + np.degrees(
-                np.array([delta_rad_pitch, -delta_rad_roll])
+                np.array([rad_delta_pitch, -rad_delta_roll])
             )
 
             self._pos_wrist_disabled = pos_wrist_desired.copy()

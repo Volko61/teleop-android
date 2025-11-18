@@ -111,6 +111,12 @@ def interpolate_transforms(T1, T2, alpha):
     return T_interp
 
 
+def matrix_t3d_to_rotation(orientation_matrix) -> Rotation:
+    orientation_quaternion_wxyz = t3d.quaternions.mat2quat(orientation_matrix)
+    orientation_quaternion_xyzw = TF_WXYZ_TO_XYZW @ orientation_quaternion_wxyz
+    return Rotation.from_quat(orientation_quaternion_xyzw)
+
+
 def compute_wrist_deltas_from_phone_and_arm(
     orientation_matrix_phone: np.ndarray,
     orientation_matrix_arm: np.ndarray,
@@ -127,36 +133,33 @@ def compute_wrist_deltas_from_phone_and_arm(
         orientation_matrix_arm_init: Initial lower arm rotation in world frame (3x3)
 
     Returns:
-        (delta_rad_pitch, delta_rad_roll): Wrist delta angles in radians
+        (rad_delta_pitch, rad_delta_roll): Wrist delta angles in radians
     """
     # Compute phone's orientation in the lower arm frame coordinates
-    orientation_wrist = orientation_matrix_arm.T @ orientation_matrix_phone
-    orientation_wrist_init = (
+    orientation_matrix_phone_to_arm = (
+        orientation_matrix_arm.T @ orientation_matrix_phone
+    )
+    orientation_matrix_phone_to_arm_init = (
         orientation_matrix_arm_init.T @ orientation_matrix_phone_init
     )
 
     # Compute delta rotation: how the phone rotated since calibration, expressed in the lower arm frame
-    delta_orientation_wrist = orientation_wrist_init.T @ orientation_wrist
-
-    # Extract pitch using wrist joint convention (relative to arm)
-    # Note that the lower arm frame coordinates are DLF instead of FLU
-    _, delta_rad_pitch, _ = t3d.euler.mat2euler(delta_orientation_wrist, axes="sxyz")
-
-    # Compute roll independently in world frame (not relative to arm roll)
-    # Compute phone's rotation delta in world frame
-    delta_orientation_phone_world = (
-        orientation_matrix_phone_init.T @ orientation_matrix_phone
+    orientation_matrix_delta = (
+        orientation_matrix_phone_to_arm_init.T @ orientation_matrix_phone_to_arm
     )
 
-    # Extract roll from the phone's rotation delta in world frame, this gives roll independent of arm roll
-    delta_rad_roll, _, _ = t3d.euler.mat2euler(
-        delta_orientation_phone_world, axes="sxyz"
+    # Extract pitch and roll using wrist joint convention (relative to arm).
+    # Using "syzx" avoid gimbal lock on pitch and roll.
+    rad_delta_pitch, rad_delta_yaw, rad_delta_roll = t3d.euler.mat2euler(
+        orientation_matrix_delta, axes="syzx"
     )
 
-    return delta_rad_pitch, delta_rad_roll
+    # Changes in yaw create gimbal lock issues. We assume that the user moves the phone
+    # in such a way that the yaw of the phone is aligned with the yaw of the lower
+    # arm (in world coordinates, z up). Basically we are assuming the phone remains
+    # aligned with the gripper. When the assumption is broken, we ignore the phone's
+    # orientation changes.
+    if abs(rad_delta_yaw) > math.radians(30.0):
+        return 0.0, 0.0
 
-
-def matrix_t3d_to_rotation(orientation_matrix) -> Rotation:
-    orientation_quaternion_wxyz = t3d.quaternions.mat2quat(orientation_matrix)
-    orientation_quaternion_xyzw = TF_WXYZ_TO_XYZW @ orientation_quaternion_wxyz
-    return Rotation.from_quat(orientation_quaternion_xyzw)
+    return rad_delta_pitch, rad_delta_roll
