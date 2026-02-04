@@ -15,7 +15,14 @@ from lerobot.robots.so_follower.robot_kinematic_processor import (
 from lerobot.robots.so_follower.config_so_follower import SO101FollowerConfig
 from lerobot.robots.so_follower.so_follower import SO101Follower
 from lerobot.teleoperators.phone.config_phone import PhoneConfig, PhoneOS
-from lerobot.utils.robot_utils import busy_wait
+# from lerobot.utils.robot_utils import busy_wait
+import time
+
+# Define a simple replacement
+def busy_wait(seconds):
+    time.sleep(seconds)
+
+
 from lerobot.utils.visualization_utils import init_rerun, log_rerun_data
 from teleop_android import (
     AndroidPhone,
