@@ -25,7 +25,14 @@ from lerobot.robots.so_follower.robot_kinematic_processor import (
     InverseKinematicsEEToJoints,
 )
 from lerobot.teleoperators.phone.config_phone import PhoneConfig, PhoneOS
-from lerobot.utils.robot_utils import busy_wait
+# from lerobot.utils.robot_utils import busy_wait
+import time
+
+# Define a simple replacement
+def busy_wait(seconds):
+    time.sleep(seconds)
+
+
 from rerun import blueprint as rrb
 from teleop_android import (
     AndroidPhone,
